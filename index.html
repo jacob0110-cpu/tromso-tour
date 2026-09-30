@@ -38,6 +38,27 @@ h1 { font-size: clamp(30px, 6vw, 46px); line-height: 1.2; margin: 8px 0 6px; let
 .wx small { display: block; color: var(--mute); font-size: 13px; margin-top: 3px; }
 .stay b { display: block; font-size: 15px; color: #fff; }
 
+
+/* 即時天氣與極光 */
+.live { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px; margin:0 0 22px; }
+.live .card { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:14px 16px; }
+.live h3 { margin:0 0 8px; font-size:16px; color:#fff; }
+.live .big { font-size:30px; line-height:1.2; color:#fff; font-weight:700; }
+.live .row { color:var(--mute); font-size:14px; margin-top:4px; }
+.live .days { display:grid; grid-template-columns:repeat(auto-fill,minmax(88px,1fr)); gap:6px; margin-top:10px; }
+.live .days div { background:#10212b; border-radius:4px; padding:6px 8px; font-size:13px; color:var(--ink); }
+.live .days span { display:block; color:var(--mute); font-size:12px; }
+.kpday { margin-top:10px; }
+.kpday .dl { font-size:13px; color:var(--mute); margin-bottom:4px; }
+.kpbars { display:flex; gap:4px; align-items:flex-end; height:64px; }
+.kpbars div { flex:1; min-width:0; text-align:center; font-size:11px; color:#0f1c24; border-radius:3px 3px 0 0; position:relative; }
+.kpbars div small { position:absolute; left:0; right:0; bottom:-16px; color:var(--mute); font-size:10px; }
+.kpwrap { padding-bottom:16px; }
+.live .ok { color:#6fd28c; } .live .warn { color:#f0b44c; }
+.live .src { font-size:12px; color:var(--mute); margin-top:10px; }
+.live .src a { color:#5bb6df; text-decoration:none; margin-right:12px; }
+.live .src a:hover { text-decoration:underline; }
+
 /* 地圖區塊 */
 .wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px 6px 0 0; background: #b4d3e0; }
 .stage { position: relative; height: 640px; min-width: 1000px; }
@@ -114,6 +135,13 @@ li .lk a:hover { text-decoration:underline; }
     <div class="wx"><b>特羅姆瑟目前約 2°C，多雲</b><small>10/19 預報：最高 4°C / 最低 0°C，風速 6 m/s</small><small>建議穿著防風保暖衣物，橋上與山頂風勢較大。</small></div>
     <div class="stay"><span>交通起點</span><b>🚢 Prostneset 郵輪碼頭 (14:15抵達)</b></div>
     <div class="stay"><span>住宿</span><b>🏨 Skaret by VANDER</b></div>
+</div>
+
+
+<div class="live">
+    <div class="card"><h3>🌌 目前極光 Kp 值（NOAA）</h3><div id="kp-now" class="row">載入中…</div>
+        <div class="src"><a href="https://www.swpc.noaa.gov/products/planetary-k-index" target="_blank" rel="noopener">🌐 NOAA Kp 指數</a><a href="https://www.gi.alaska.edu/monitors/aurora-forecast" target="_blank" rel="noopener">🌐 極光預報</a></div>
+    </div>
 </div>
 
 <div class="wrap"><div class="stage"><div class="canvas">
@@ -357,6 +385,28 @@ function showInfo(id) {
     if (d.web) w.href = d.web;
 }
 showInfo(1);
+
+// ===== 目前 Kp 值 =====
+(function () {
+    const el = document.getElementById('kp-now');
+    const tz = 'Europe/Oslo';
+    const fmt = d => new Intl.DateTimeFormat('zh-TW', {timeZone: tz, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false}).format(d);
+    const color = k => k >= 5 ? '#e0533d' : k >= 4 ? '#f0913a' : k >= 3 ? '#f0d54c' : k >= 2 ? '#7ed957' : '#4aa96c';
+    const get = url => { const c = new AbortController(); const t = setTimeout(() => c.abort(), 9000); return fetch(url, {signal: c.signal}).then(r => { clearTimeout(t); if (!r.ok) throw new Error(r.status); return r.json(); }); };
+    function show(kp, time) {
+        const lvl = kp >= 5 ? '磁暴等級，極光可能非常強' : kp >= 4 ? '活動強，極光機率很高' : kp >= 3 ? '活動中上，天氣晴朗時機率高' : kp >= 2 ? '活動中等，特羅姆瑟晴朗夜晚仍有機會' : '活動偏弱，需天空非常晴朗才可能看到';
+        el.innerHTML = '<div class="big" style="color:' + color(kp) + '">Kp ' + kp.toFixed(1) + '</div><div class="row">' + lvl + '。</div><div class="row">資料時間：' + fmt(time) + '（當地時間）</div>';
+    }
+    get('https://services.swpc.noaa.gov/json/planetary_k_index_1m.json').then(rows => {
+        const r = rows[rows.length - 1];
+        const kp = parseFloat(r.estimated_kp != null ? r.estimated_kp : r.kp_index);
+        if (isNaN(kp)) throw new Error('bad');
+        show(kp, new Date(r.time_tag.endsWith('Z') ? r.time_tag : r.time_tag + 'Z'));
+    }).catch(() => get('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json').then(rows => {
+        const r = rows[rows.length - 1];
+        show(parseFloat(r[1]), new Date(r[0].replace(' ', 'T') + 'Z'));
+    })).catch(() => { el.textContent = '無法連線即時資料（可能是網頁環境限制，或目前離線）。請下載 HTML 檔並在本機瀏覽器開啟，或點下方連結查看。'; });
+})();
 </script>
 </body>
 </html>
